@@ -37,7 +37,7 @@ public class InspectZip {
 
 	      ZipEntry entry;
 	      while((entry = zin.getNextEntry())!=null){
-	    	  if ( !entry.isDirectory() && entry.getName().endsWith(".zip") ){
+	    	  if ( !entry.isDirectory() && (entry.getName().endsWith(".zip") || entry.getName().endsWith(".jar") ) ){
 	    		  readZipFile(zin,entry.getName());
 	    	  }
   	
