@@ -4,7 +4,8 @@ package com.percallgroup;
 
 
 //https://stackoverflow.com/questions/11287486/read-a-zip-file-inside-zip-file
-
+//https://stackoverflow.com/questions/2056221/recursively-list-files-in-java
+	
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -18,8 +19,8 @@ import java.util.zip.ZipFile;
 public class InspectZip {
    
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
 		//String startFile="D:\\temp\\buildlogs.zip";
+		/*
 		String startFile="D:\\temp\\wmd_WC_MODULES-rt_zg_ia_sf.zip";
 		File zipfile = new File(startFile);
 		
@@ -28,8 +29,39 @@ public class InspectZip {
 	      } catch(IOException ioe) {
 	          System.out.println("IOException : " + ioe);			
 		}
+		*/
+		
+		InspectZip iz = new InspectZip();
+		String startDir="D:\\temp\\DD\\";
+		iz.walk(startDir);
+		
 	}
 
+	
+	private void walk( String path ) {
+
+        File root = new File( path );
+        File[] list = root.listFiles();
+
+        if (list == null) return;
+
+        for ( File f : list ) {
+            if ( f.isDirectory() ) {
+                walk( f.getAbsolutePath() );
+                System.out.println( "Dir:" + f.getAbsoluteFile() );
+            }
+            else {
+            	if (f.getName().endsWith(".zip")) {
+            		try {
+            			readZipFile(new FileInputStream(f),f.getPath());
+            		} catch(IOException ioe) {
+          	          System.out.println("IOException : " + ioe);			
+            		}
+            	}
+                //System.out.println( "File:" + f.getAbsoluteFile() );
+            }
+        }
+    }
 	
 	private static void readZipFile(InputStream fileInputStream, String targetFile) throws IOException{
 
