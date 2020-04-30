@@ -1,0 +1,1 @@
+get-childitem Z:\ptc\Windchill_11.2\Windchill -rec | where {!$_.PSIsContainer} | select-object FullName, Length, LastWriteTime | export-csv -notypeinformation -delimiter ',' -path d:\temp\SourceServer.csv
