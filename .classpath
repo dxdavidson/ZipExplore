@@ -4,5 +4,6 @@
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="lib" path="D:/workspace/ZIPExplore/lib/opencsv-5.1.jar"/>
 	<classpathentry kind="lib" path="lib/commons-lang3-3.10.jar"/>
+	<classpathentry kind="lib" path="lib/guava-29.0-jre.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

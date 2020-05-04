@@ -1,10 +1,7 @@
 package com.percallgroup;
 
-
-
-
-//https://stackoverflow.com/questions/11287486/read-a-zip-file-inside-zip-file
-//https://stackoverflow.com/questions/2056221/recursively-list-files-in-java
+//https://stackoverflow.com/questions/3934470/how-to-iterate-through-google-multimap
+//https://www.programcreek.com/java-api-examples/?api=java.util.zip.ZipEntry
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -14,12 +11,14 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeMap;
+//import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -43,15 +42,22 @@ import com.opencsv.CSVReaderBuilder;
 import com.opencsv.CSVWriter;
 import com.opencsv.RFC4180Parser;
 import com.opencsv.RFC4180ParserBuilder;
-import com.opencsv.exceptions.CsvValidationException; 
+import com.opencsv.exceptions.CsvValidationException;
+
+import com.google.common.collect.Multimap;
+import com.google.common.collect.MultimapBuilder;
+import com.google.common.collect.ArrayListMultimap;
+
 
 
 public class InspectZip {
 
 
 	private String currentOSArchive;
-	private TreeMap<String, PTCMediaFile> catalogFiles = new TreeMap<String, PTCMediaFile>();
-
+	//private TreeMap<String, PTCMediaFile> catalogFiles = new TreeMap<String, PTCMediaFile>();
+	//private Multimap<String, PTCMediaFile> catalogFilesMulti = ArrayListMultimap.create();
+	private Multimap<String, PTCMediaFile> catalogFilesMulti = MultimapBuilder.treeKeys().arrayListValues().build();
+	
 	public static void main(String[] args) {
 
 		InspectZip iz = new InspectZip();
@@ -93,21 +99,24 @@ public class InspectZip {
 				// nextLine[] is an array of values from the line
 				//System.out.println(nextLine[0] + nextLine[1] + "etc...");
 				mediafile = new PTCMediaFile(nextLine);
-				catalogFiles.put(mediafile.getFileName(),mediafile);
+				catalogFilesMulti.put(mediafile.getFileName(),mediafile);
 			}
 		} catch (IOException ioe) {
 			System.out.println(ioe.getMessage());			
 		} catch (CsvValidationException csve) {
 			System.out.println(csve.getMessage());
 		}
-		System.out.println("Loaded " + catalogFiles.size() + " files from " + AppProperties.CATALOG_CSV);
+		System.out.println("Loaded " + catalogFilesMulti.size() + " files from " + AppProperties.CATALOG_CSV);
 	}
 
+	
 	private void compareSourceWithCatalog() {
 
 		DeployedFile df;
-		PTCMediaFile pmf;
-
+		//PTCMediaFile pmf;
+		
+		Collection<PTCMediaFile> pmfiles;
+		
 		//Loads the TreeMap catalogFiles
 		this.loadCatalog();
 
@@ -128,39 +137,59 @@ public class InspectZip {
 			// adding header to csv 
 			String[] header = { "FileName", "Extension", "Issue", "Comment" }; 
 			writer.writeNext(header); 
+			boolean foundMatchingCatalogEntry; 
+			String catalogFileDetails;
 			
 			String [] nextLine;
 			while ((nextLine = reader.readNext()) != null) {
 				// nextLine[] is an array of values from the line
 				//System.out.println(nextLine[0] + nextLine[1] + "etc...");
 				df = new DeployedFile(nextLine);
-				//System.out.println(df.getFileName() + " lastModified: " + df.printLastModified());
-
-				pmf = catalogFiles.get(df.getFileName());
-				if (pmf==null ) {
-					String[] line = {
-							df.getFileName(),
-							df.getFileExtension(),
-							"Additional",
-							df.getFileName() + " not in Media Catalog, may be custom added"
-					};
-					writer.writeNext(line); 
-					//System.out.println(df.getFileName() + " missing from Catalog");
-				} else {
-					//System.out.println(cf.getFileName() + " found in Catalog");
-					if (!df.equalsfileSize(pmf)) {
+				foundMatchingCatalogEntry = false;
+				
+				if (df.isValidForReport() ) {
+	
+					pmfiles = catalogFilesMulti.get(df.getFileName());
+					if (pmfiles.size() == 0 ) {
+						//System.out.println(df.getFileName() + " missing from Catalog");
 						String[] line = {
 								df.getFileName(),
 								df.getFileExtension(),
-								"Modified",
-								df.getFileName() + " deployed version: " + df.getFileSize() + "bytes" + " catalog version: " +  pmf.getFileSize() + "bytes"
+								"Additional",
+								df.getFileName() + " not in Media Catalog, may be custom added"
 						};
-						writer.writeNext(line);						
-						//System.out.println(df.getFileName() + " deployed version has " + df.getFileSize() + "bytes" + " catalog version has " +  pmf.getFileSize() + "bytes");
+						writer.writeNext(line);
+						
+					} else {
+						for (PTCMediaFile pmf : pmfiles) {
+							if (df.equalsfileSize(pmf)) {
+								foundMatchingCatalogEntry = true;
+								break;
+							}
+						}
+						if (!foundMatchingCatalogEntry) {
+
+							if (pmfiles.size() > 1 ) {
+								catalogFileDetails = pmfiles.size()+" files existing in catalog, none of matching size";
+							} else {
+								catalogFileDetails = " Catalog version: " +  pmfiles.iterator().next().getFileSize() + " bytes. ";
+							}
+							String[] line = {
+									df.getFileName(),
+									df.getFileExtension(),
+									"Modified",
+									df.getFileName() + " deployed version: " + df.getFileSize() + " bytes. " + catalogFileDetails
+							};
+							
+							writer.writeNext(line);						
+
+						}
 					}
+					
 				}
 
 			}
+			
 			outputfile.close();
 			writer.close();
 			reader.close();
@@ -170,17 +199,16 @@ public class InspectZip {
 		} catch (CsvValidationException csve) {
 			System.out.println(csve.getMessage());
 		}
-		
 
 	}
 
+	
 	private void createPTCMediaCatalog() {
 
 		walkDirectory(AppProperties.START_DIR);
 
 		//outputToXML();
 		outputToCSV();
-
 	}
 
 
@@ -221,6 +249,7 @@ public class InspectZip {
 		ZipInputStream zin = new ZipInputStream(fileInputStream); 
 
 		ZipEntry entry;
+		PTCMediaFile existingMediaFile;
 		PTCMediaFile mediafile;
 		while((entry = zin.getNextEntry())!=null){
 			if ( !entry.isDirectory() && (entry.getName().endsWith(".zip") || entry.getName().endsWith(".jar") ) ){
@@ -231,8 +260,7 @@ public class InspectZip {
 			if (!entry.isDirectory()) {
 				mediafile = new PTCMediaFile(entry,currentOSArchive, archivePath );
 
-				catalogFiles.put(entry.getName(),mediafile);
-
+				catalogFilesMulti.put(entry.getName(),mediafile);
 			}
 			//zin.closeEntry();
 		}
@@ -260,12 +288,7 @@ public class InspectZip {
 			String[] header = { "FileName", "OSArchive", "Bytes", "CRC", "LastModified" }; 
 			writer.writeNext(header); 
 
-			Set filesSet = catalogFiles.entrySet();
-			Iterator iterator = filesSet.iterator();
-			while(iterator.hasNext()) {
-				Map.Entry mentry = (Map.Entry)iterator.next();
-
-				PTCMediaFile pmf = (PTCMediaFile) mentry.getValue();
+			for (PTCMediaFile pmf : catalogFilesMulti.values()) {
 				ZipEntry ze = pmf.getZipEntry();
 
 				String[] line = {
@@ -278,8 +301,8 @@ public class InspectZip {
 						String.valueOf(ze.getLastModifiedTime())
 				};
 				writer.writeNext(line); 
-
 			}
+			
 
 			// closing writer connection 
 			writer.close(); 
@@ -290,6 +313,7 @@ public class InspectZip {
 		} 
 	} 
 
+	/*
 	private void outputToXML() {
 		System.out.println("Writing to XML: " + AppProperties.OUTPUT_XML);
 
@@ -359,5 +383,5 @@ public class InspectZip {
 			System.out.println("UsersXML: Error trying to instantiate DocumentBuilder " + pce);
 		}
 	}
-
+*/
 }

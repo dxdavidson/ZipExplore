@@ -90,5 +90,29 @@ public class DeployedFile {
 	}
 
 
+	/**
+	 * Check if this file should be included in the report
+	 * Some reasons why not to include
+	 * 	- class is under the tasks/com/infoengine/compiledTasks folder
+	 */
+	public boolean isValidForReport () {
+		boolean isValid = true;
+		
+		if (this.fileName.startsWith("tasks/com/infoengine/compiledTasks")
+				||this.fileName.startsWith("temp/")
+				||this.fileName.startsWith("tmp/")
+				||this.fileName.startsWith("logs/")
+				||this.fileName.startsWith("vaults/")
+				||this.fileName.startsWith("db/")
+				||this.fileName.startsWith("CustomizerDoc/")
+				||this.fileName.startsWith("gwt/")				
+				||this.fileName.startsWith("gwt-unitCache/")
+				||this.fileName.startsWith("Upgrade/")
+				) {
+			isValid = false;
+		}
+		return isValid;
+	}
+	
 
 }
