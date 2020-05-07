@@ -1,9 +1,11 @@
 package com.percallgroup;
 
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class PTCMediaFile {
 	private ZipEntry archiveEntry;
+	private ZipInputStream archiveInputStream;
 	private String fileName;
 	private String sourceArchiveFile;
 	private String fileSize;
@@ -22,15 +24,17 @@ public class PTCMediaFile {
 		this.CRC = csvline[3];
 		this.lastModified = csvline[4];
 		
-		this.setfilePath();
+		this.filePath = this.fileName;
+		//this.setfilePath();
 
 	}
 
-	public PTCMediaFile(ZipEntry entry, String OSArchive, String localArchivePath) {
+	public PTCMediaFile(ZipInputStream zis, ZipEntry entry, String OSArchive, String localArchivePath) {
 		super();
 
 		this.fileName = entry.getName();
 		this.archiveEntry = entry;
+		this.archiveInputStream = zis;
 		this.sourceArchiveFile = OSArchive;
 		this.archivePath = localArchivePath;
 		
@@ -80,12 +84,6 @@ public class PTCMediaFile {
 	public void setCRC(String cRC) {
 		CRC = cRC;
 	}
-	public String getLastModified() {
-		return lastModified;
-	}
-	public void setLastModified(String lastModified) {
-		this.lastModified = lastModified;
-	}
 
 	public String getSourceArchiveFile() {
 		return sourceArchiveFile;
@@ -102,5 +100,10 @@ public class PTCMediaFile {
 	public ZipEntry getZipEntry()
 	{
 		return this.archiveEntry;
+	}
+	
+	public ZipInputStream getZipInputStream()
+	{
+		return this.archiveInputStream;
 	}
 }

@@ -3,8 +3,10 @@ package com.percallgroup;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 
 public class DeployedFile {
 	private String fileName;
@@ -93,24 +95,30 @@ public class DeployedFile {
 	/**
 	 * Check if this file should be included in the report
 	 * Some reasons why not to include
-	 * 	- class is under the tasks/com/infoengine/compiledTasks folder
+	 * 	- class is under the tasks/com/infoengine/compiledTasks folder (list of folders defined in .properties)
+	 *  - log files, or other file extensions defined in .properties
 	 */
 	public boolean isValidForReport () {
 		boolean isValid = true;
 		
-		if (this.fileName.startsWith("tasks/com/infoengine/compiledTasks")
-				||this.fileName.startsWith("temp/")
-				||this.fileName.startsWith("tmp/")
-				||this.fileName.startsWith("logs/")
-				||this.fileName.startsWith("vaults/")
-				||this.fileName.startsWith("db/")
-				||this.fileName.startsWith("CustomizerDoc/")
-				||this.fileName.startsWith("gwt/")				
-				||this.fileName.startsWith("gwt-unitCache/")
-				||this.fileName.startsWith("Upgrade/")
-				) {
-			isValid = false;
+		List<String> excludeStartsWith = Arrays.asList(AppProperties.EXCLUDE_STARTSWITH.split(","));
+		for (String str : excludeStartsWith) {
+			if (this.fileName.toUpperCase().startsWith(str.toUpperCase())) {
+				isValid = false;
+				break;
+			}
 		}
+		
+		if (isValid) {
+			List<String> excludeExtension = Arrays.asList(AppProperties.EXCLUDE_EXTENSION.split(","));
+			for (String str : excludeExtension) {
+				if (this.fileName.toUpperCase().endsWith(str.toUpperCase())) {
+					isValid = false;
+					break;
+				}
+			}			
+		}
+
 		return isValid;
 	}
 	

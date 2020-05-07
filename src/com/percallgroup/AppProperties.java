@@ -14,7 +14,12 @@ public class AppProperties {
 	public static String SOURCE_FILELIST;
 	public static String DATE_FORMAT;
 	public static String OUTPUT_REPORT;
-
+	public static String EXCLUDE_STARTSWITH;	
+	public static String EXCLUDE_EXTENSION;
+	public static String FILESTOEXTRACT;
+	public static String EXTRACT_DIR;
+	
+	
 	public static void load() {
 
 		Properties prop = new Properties();
@@ -31,7 +36,11 @@ public class AppProperties {
 			SOURCE_FILELIST=prop.getProperty("source.file.listing");
 			TIMEADJUSTMENT = Integer.parseInt(prop.getProperty("deployedfile.timezone.adjustment"));
 			DATE_FORMAT=prop.getProperty("deployedfile.dateformat");
-
+			EXCLUDE_STARTSWITH=prop.getProperty("exclude.startswith");
+			EXCLUDE_EXTENSION=prop.getProperty("exclude.extension");
+			FILESTOEXTRACT=prop.getProperty("filestoextract");
+			EXTRACT_DIR=prop.getProperty("extract.to.directory");
+			
 			input.close();
 		} catch (IOException e) { 
 			e.printStackTrace(); 

@@ -2,15 +2,19 @@ package com.percallgroup;
 
 //https://stackoverflow.com/questions/3934470/how-to-iterate-through-google-multimap
 //https://www.programcreek.com/java-api-examples/?api=java.util.zip.ZipEntry
+//https://stackoverflow.com/questions/12310978/check-if-string-ends-with-certain-pattern
+
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
@@ -54,9 +58,9 @@ public class InspectZip {
 
 
 	private String currentOSArchive;
-	//private TreeMap<String, PTCMediaFile> catalogFiles = new TreeMap<String, PTCMediaFile>();
-	//private Multimap<String, PTCMediaFile> catalogFilesMulti = ArrayListMultimap.create();
 	private Multimap<String, PTCMediaFile> catalogFilesMulti = MultimapBuilder.treeKeys().arrayListValues().build();
+	ArrayList<String> filesToExtract = new ArrayList<String>(); 
+    private boolean extractionMode = false;    
 	
 	public static void main(String[] args) {
 
@@ -65,7 +69,7 @@ public class InspectZip {
 		//System.out.println("Time adjustment: "+AppProperties.TIMEADJUSTMENT);
 
 		if (args.length == 0) {
-			System.err.println("Usage: InspectZip CreateCatalog|CompareSource");
+			System.err.println("Usage: InspectZip CreateCatalog|CompareSource|ExtractFromMedia");
 			System.exit(1);
 		}
 		switch (args[0].toUpperCase()) {
@@ -75,8 +79,11 @@ public class InspectZip {
 		case "COMPARESOURCE":
 			iz.compareSourceWithCatalog();
 			break;
+		case "EXTRACTFROMMEDIA":
+			iz.extractFromCatalog();	
+			break;			
 		default:
-			System.err.println("Usage: InspectZip CreateCatalog|CompareSource");
+			System.err.println("Usage: InspectZip CreateCatalog|CompareSource|ExtractFromMedia");
 			System.exit(1);
 
 		}
@@ -115,6 +122,14 @@ public class InspectZip {
 		DeployedFile df;
 		//PTCMediaFile pmf;
 		
+		//There is an issue where many files in the PTC Media ZIP are 0 bytes
+		//Yet the deployed version is not 0 bytes
+		//Sometimes this is because a localized version is copied over when the install takes place
+		//Other times, I cannot explain! e.g. there are GIF files of 0 bytes in the catalog, but once deployed they are 846 bytes, they must be copied from somewhere
+		//To avoid these 0byte files skewing the report, I will identify them with a warning, but not count them as having been modified
+		Long sumOfFileSizes;
+		String issue="";
+		
 		Collection<PTCMediaFile> pmfiles;
 		
 		//Loads the TreeMap catalogFiles
@@ -146,10 +161,12 @@ public class InspectZip {
 				//System.out.println(nextLine[0] + nextLine[1] + "etc...");
 				df = new DeployedFile(nextLine);
 				foundMatchingCatalogEntry = false;
+				sumOfFileSizes = (long) 0;
 				
 				if (df.isValidForReport() ) {
 	
 					pmfiles = catalogFilesMulti.get(df.getFileName());
+					
 					if (pmfiles.size() == 0 ) {
 						//System.out.println(df.getFileName() + " missing from Catalog");
 						String[] line = {
@@ -162,6 +179,8 @@ public class InspectZip {
 						
 					} else {
 						for (PTCMediaFile pmf : pmfiles) {
+							sumOfFileSizes = sumOfFileSizes + Long.parseLong(pmf.getFileSize());
+							
 							if (df.equalsfileSize(pmf)) {
 								foundMatchingCatalogEntry = true;
 								break;
@@ -169,15 +188,23 @@ public class InspectZip {
 						}
 						if (!foundMatchingCatalogEntry) {
 
-							if (pmfiles.size() > 1 ) {
-								catalogFileDetails = pmfiles.size()+" files existing in catalog, none of matching size";
+							if (sumOfFileSizes ==0 ) {
+								catalogFileDetails = pmfiles.size()+" files exist in catalog, all 0 bytes. Probably these files have not been modified. ";
+								issue = "Warning";
 							} else {
-								catalogFileDetails = " Catalog version: " +  pmfiles.iterator().next().getFileSize() + " bytes. ";
+								if (pmfiles.size() > 1 ) {
+									catalogFileDetails = pmfiles.size()+" files existing in catalog, none of matching size";
+									issue = "Modified";
+								} else {
+									catalogFileDetails = " Catalog version: " +  pmfiles.iterator().next().getFileSize() + " bytes. ";
+									issue = "Modified";
+									}
 							}
+							
 							String[] line = {
 									df.getFileName(),
 									df.getFileExtension(),
-									"Modified",
+									issue,
 									df.getFileName() + " deployed version: " + df.getFileSize() + " bytes. " + catalogFileDetails
 							};
 							
@@ -204,14 +231,23 @@ public class InspectZip {
 
 	
 	private void createPTCMediaCatalog() {
-
+		
 		walkDirectory(AppProperties.START_DIR);
 
 		//outputToXML();
 		outputToCSV();
 	}
 
+	private void extractFromCatalog() {
 
+		extractionMode = true;
+		buildExtractList();
+		
+		walkDirectory(AppProperties.START_DIR);
+
+		//extractFiles();
+	}
+	
 	private void walkDirectory( String path ) {
 
 		File root = new File( path );
@@ -253,12 +289,19 @@ public class InspectZip {
 		PTCMediaFile mediafile;
 		while((entry = zin.getNextEntry())!=null){
 			if ( !entry.isDirectory() && (entry.getName().endsWith(".zip") || entry.getName().endsWith(".jar") ) ){
+			//if ( !entry.isDirectory() && (entry.getName().endsWith(".gz") ) ){			
 				readZipFile(zin,entry.getName(), level+1, archivePath+"|"+entry.getName());
 			}
 
 
 			if (!entry.isDirectory()) {
-				mediafile = new PTCMediaFile(entry,currentOSArchive, archivePath );
+				mediafile = new PTCMediaFile(zin, entry,currentOSArchive, archivePath );
+
+				//If file is in list of those to be extracted, then extract it.
+				if (extractionMode && filesToExtract.contains(entry.getName())) {
+					this.extractSingleFile(zin, entry);
+				}
+				//if (entry.getName().endsWith("ConstraintDisplayNamesRB.java")) {this.extractSingleFile(zin, entry);};
 
 				catalogFilesMulti.put(entry.getName(),mediafile);
 			}
@@ -267,6 +310,125 @@ public class InspectZip {
 		//zin.close();
 	}
 
+
+	public void buildExtractList() {
+		
+		try {
+			RFC4180Parser rfc4180Parser = new RFC4180ParserBuilder().build();
+			CSVReaderBuilder csvReaderBuilder = new CSVReaderBuilder( new FileReader(AppProperties.FILESTOEXTRACT));
+			CSVReader reader = csvReaderBuilder.withCSVParser(rfc4180Parser).build();
+			
+			String [] nextLine;
+			while ((nextLine = reader.readNext()) != null) {
+				filesToExtract.add(nextLine[0]);
+			}
+		} catch (IOException ioe) {
+			System.out.println(ioe.getMessage());	
+		} catch (CsvValidationException csve) {
+			System.out.println(csve.getMessage());
+		}
+
+		
+	}
+	
+	public void extractFiles() {
+
+		Collection<PTCMediaFile> pmfiles;
+		PTCMediaFile tmp;
+		
+		try {
+			RFC4180Parser rfc4180Parser = new RFC4180ParserBuilder().build();
+			CSVReaderBuilder csvReaderBuilder = new CSVReaderBuilder( new FileReader(AppProperties.FILESTOEXTRACT));
+			CSVReader reader = csvReaderBuilder.withCSVParser(rfc4180Parser).build();
+
+			String [] nextLine;
+			while ((nextLine = reader.readNext()) != null) {
+				// nextLine[] is an array of values from the line
+				//System.out.println(nextLine[0] + nextLine[1] + "etc...");
+				pmfiles = catalogFilesMulti.get(nextLine[0]);
+				
+				//File has not been found in Catalog
+				if (pmfiles.size() == 0 ) {
+					System.out.println(nextLine[0] + " not found");
+				} else {
+					System.out.println(nextLine[0] + " " + pmfiles.size() + " files FOUND");
+					tmp = pmfiles.iterator().next();
+					for (PTCMediaFile pmf : pmfiles) {
+						System.out.println(pmf.getfilePath() + " " + new Date(pmf.getZipEntry().getTime()));
+						//Check if this element has a later modifiedtimestamp than the tmp element
+						if (pmf.getZipEntry().getTime() > tmp.getZipEntry().getTime()) {
+							tmp = pmf;
+						}
+					}
+					System.out.println("Extract "+ tmp.getFileName() + " dated " + new Date(tmp.getZipEntry().getTime()));
+					this.extractSingleFile(tmp.getZipInputStream(), tmp.getZipEntry());
+					
+				}
+			}			
+		} catch (IOException ioe) {
+			System.out.println(ioe.getMessage());	
+		} catch (CsvValidationException csve) {
+			System.out.println(csve.getMessage());
+		}
+
+	}
+
+	
+	private void extractSingleFile(ZipInputStream thisZin, ZipEntry thisZipEntry) {
+		System.out.println("Extracting " + thisZipEntry.getName());
+		boolean extractFile = false;
+		
+		try {
+			File destFile = newDir(new File(AppProperties.EXTRACT_DIR), thisZipEntry);
+			//If the file either doesn't already exist
+			//Or the file that exists is older than the one in the zip
+			//Then extract it
+			if (!destFile.exists() ) {
+				extractFile=true;
+			} else if (thisZipEntry.getTime() > destFile.lastModified()) {
+				System.out.println(thisZipEntry.getName() + " " + new Date(destFile.lastModified()) + " ZIP entry more recent than exising " +  new Date(thisZipEntry.getTime()) + " extracting from zip");
+				extractFile=true;
+			} else if (thisZipEntry.getTime() == destFile.lastModified()) {
+				System.out.println(thisZipEntry.getName() + " " + new Date(destFile.lastModified()) + " ZIP entry same datstamp as existing  " +  new Date(thisZipEntry.getTime()) + " do not extract");
+				extractFile=true;
+			} else if (thisZipEntry.getTime() < destFile.lastModified()) {
+				System.out.println(thisZipEntry.getName() + " " + new Date(destFile.lastModified()) + " ZIP entry older than existing " +  new Date(thisZipEntry.getTime()) + " do not extract");
+				extractFile=false;
+			} 
+				
+			
+			if (extractFile) {
+				FileOutputStream fos = new FileOutputStream(destFile);
+				byte[] buffer = new byte[1024];
+			
+				int len;
+		        while ((len = thisZin.read(buffer)) > 0) {
+		            fos.write(buffer, 0, len);
+		        }
+		        fos.close();
+		        destFile.setLastModified(thisZipEntry.getTime());
+			}
+		} catch (IOException ioe) {
+			System.out.println(ioe.getMessage());	
+		} 
+		
+
+	}
+	
+	public File newDir(File destinationDir, ZipEntry zipEntry) throws IOException {
+		File destFile = new File(destinationDir, zipEntry.getName());
+         
+        String destDirPath = destinationDir.getCanonicalPath();
+        String destFilePath = destFile.getCanonicalPath();
+        
+        destFile.getParentFile().mkdirs();
+        
+        if (!destFilePath.startsWith(destDirPath + File.separator)) {
+            throw new IOException("Entry is outside of the target dir: " + zipEntry.getName());
+        }
+         
+        return destFile;
+    }
 
 	public void outputToCSV() 
 	{ 
